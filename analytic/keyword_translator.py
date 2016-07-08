@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from concrete import Communication, AnnotationMetadata, Tokenization, TokenList, Token, TokenizationKind
+from concrete import Communication, AnnotationMetadata, Tokenization, TokenList, Token, TokenizationKind, TokenLattice, Arc
 from concrete.services import Annotator
 from concrete.util.concrete_uuid import AnalyticUUIDGeneratorFactory
 
@@ -12,6 +12,15 @@ import logging
 import time
 import nltk
 
+
+class Translation:
+    def __init__(self, text, score):
+        self.text = text
+        self.score = score
+    def getText(self):
+        return self.text
+    def getScore(self):
+        return self.score
 
 class Word:
     def __init__(self, s):
@@ -25,12 +34,13 @@ class Word:
         return self.translations
 
     def addTranslation(self, target, score):
-        self.translations.append((target, score))
+        self.translations.append(Translation(target, score))
         return
 
     def sortTranslations(self):
         # sort by score
-        self.translations = sorted(self.translations, key=lambda t: t[1], reverse=True)
+        self.translations = sorted(self.translations, key=lambda t: t.getScore(), reverse=True)
+        return
 
 
 def initialize_translations(filename):
@@ -53,14 +63,13 @@ def initialize_translations(filename):
     return someDict
 
 
-def translate(srcWord, wordDict):
-    translatedWord = "N/A"
+def translate(srcWord, wordDict, topK):
     try:
         srcWordObj = wordDict[srcWord]
-        translatedWord = srcWordObj.getTranslations()[0][0]
+        translatedWord = srcWordObj.getTranslations()[0:topK]
         # grabs the best translation available
     except KeyError:
-        pass
+        translatedWord = [Translation(srcWord, 0)]
     return translatedWord
 
 
@@ -72,12 +81,23 @@ class CommunicationHandler:
         self.wordDict = initialize_translations(filename)
 
     def annotate(self, communication):
+        k = 3
         for section in communication.sectionList:
             for sentence in section.sentenceList:
+                arcs = []
                 for (n, token) in enumerate(sentence.tokenization.tokenList.tokenList):
                     src = token.text
-                    target = translate(src, self.wordDict)
-                    token.text = target
+                    translations = translate(src, self.wordDict, k)
+                    for translation in translations:
+                        tok = Token(tokenIndex=n,
+                                    text=translation.getText())
+                        arc = Arc(src=n,
+                                  dst=n+1,
+                                  token=tok,
+                                  weight=translation.getScore())
+                        arcs.append(arc)
+                tokLat = TokenLattice(arcList=arcs)
+                sentence.tokenization.lattice = tokLat
         return communication
 
 
@@ -89,7 +109,7 @@ if __name__ == "__main__":
     sys.setdefaultencoding('utf8')
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--port", dest="port", type=int, default=9095)
+    parser.add_argument("-p", "--port", dest="port", type=int, default=9090)
     options = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
