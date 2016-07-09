@@ -1,26 +1,26 @@
 #!/usr/bin/env python
 
-from concrete import Communication, AnnotationMetadata, Tokenization, TokenList, Token, TokenizationKind, TokenLattice, Arc
-from concrete.services import Annotator
-from concrete.util.concrete_uuid import AnalyticUUIDGeneratorFactory
+import logging
 
-from thrift.transport import TSocket, TTransport
+from concrete import Token, TokenLattice, \
+    Arc
+from concrete.services import Annotator
 from thrift.protocol import TCompactProtocol
 from thrift.server import TNonblockingServer
-
-import logging
-import time
-import nltk
+from thrift.transport import TSocket
 
 
 class Translation:
     def __init__(self, text, score):
         self.text = text
         self.score = score
+
     def getText(self):
         return self.text
+
     def getScore(self):
         return self.score
+
 
 class Word:
     def __init__(self, s):
@@ -44,6 +44,13 @@ class Word:
 
 
 def initialize_translations(filename):
+    """
+    creates a dictionary for words and their possible translations. the expected
+    format of the data in the file is to be "candidate_translation original_word score"
+    separated by spaces
+    :param filename: file containing translations
+    :return: dictionary with key being string of the word and value being word object
+    """
     with open(filename, 'r') as f:
         someDict = {}
         for (ln, line) in enumerate(f):
@@ -54,6 +61,7 @@ def initialize_translations(filename):
             try:
                 myWord = someDict[src]
             except KeyError:
+                # we haven't seen this word before, create new entry in dict
                 myWord = Word(src)
                 someDict[src] = myWord
             myWord.addTranslation(target, score)
@@ -64,6 +72,13 @@ def initialize_translations(filename):
 
 
 def translate(srcWord, wordDict, topK):
+    """
+    returns topK Translations for a word in a list
+    :param srcWord: string that you want to translate
+    :param wordDict: dictionary that stores the Word objects
+    :param topK: maximum number of translations you want
+    :return: Translations in a list
+    """
     try:
         srcWordObj = wordDict[srcWord]
         translatedWord = srcWordObj.getTranslations()[0:topK]
@@ -81,18 +96,27 @@ class CommunicationHandler:
         self.wordDict = initialize_translations(filename)
 
     def annotate(self, communication):
+        """
+        WARNING: if there is already a TokenLattice, this method will overwrite it!
+
+        takes in a communication in the source language that is tokenized,
+        returns the same communication with an additional tokenization
+        :param communication:
+        :return: the same communication with addition of tokenlattice
+        """
         k = 3
         for section in communication.sectionList:
             for sentence in section.sentenceList:
+                assert sentence.tokenization is not None
                 arcs = []
                 for (n, token) in enumerate(sentence.tokenization.tokenList.tokenList):
-                    src = token.text
+                    src = token.text.lower()
                     translations = translate(src, self.wordDict, k)
                     for translation in translations:
                         tok = Token(tokenIndex=n,
                                     text=translation.getText())
                         arc = Arc(src=n,
-                                  dst=n+1,
+                                  dst=n + 1,
                                   token=tok,
                                   weight=translation.getScore())
                         arcs.append(arc)
@@ -110,12 +134,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--port", dest="port", type=int, default=9090)
+    parser.add_argument("-dictionary", dest="dictPath", type=str)
     options = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    fn = '/opt/scripts/lex.en-zh'
     handler = CommunicationHandler()
-    handler.parseTranslations(fn)
+    logging.info('Loading the dictionary, please be patient.')
+    handler.parseTranslations(options.dictPath)
     processor = Annotator.Processor(handler)
     transport = TSocket.TServerSocket(port=options.port)
     # tfactory = TTransport.TBufferedTransportFactory()
