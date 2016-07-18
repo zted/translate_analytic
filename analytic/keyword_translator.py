@@ -3,7 +3,7 @@
 import logging
 
 from concrete import Token, TokenLattice, \
-    Arc
+    Arc, LatticePath
 from concrete.services import Annotator
 from thrift.protocol import TCompactProtocol
 from thrift.server import TNonblockingServer
@@ -84,7 +84,8 @@ def translate(srcWord, wordDict, topK):
         translatedWord = srcWordObj.getTranslations()[0:topK]
         # grabs the best translation available
     except KeyError:
-        translatedWord = [Translation(srcWord, 0)]
+        # no translation available, use original word
+        translatedWord = [Translation(srcWord, 1)]
     return translatedWord
 
 
@@ -109,10 +110,13 @@ class CommunicationHandler:
             for sentence in section.sentenceList:
                 assert sentence.tokenization is not None
                 arcs = []
+                latpath = LatticePath(weight=None, tokenList=[])
+                # we want to cache best path to make unpacking easier downstream
+
                 for (n, token) in enumerate(sentence.tokenization.tokenList.tokenList):
                     src = token.text.lower()
                     translations = translate(src, self.wordDict, k)
-                    for translation in translations:
+                    for m, translation in enumerate(translations):
                         tok = Token(tokenIndex=n,
                                     text=translation.getText())
                         arc = Arc(src=n,
@@ -120,7 +124,12 @@ class CommunicationHandler:
                                   token=tok,
                                   weight=translation.getScore())
                         arcs.append(arc)
+                        if m == 0:
+                            # "naive" best translation is the first token we
+                            # iterate through given a list of k translations
+                            latpath.tokenList.append(tok)
                 tokLat = TokenLattice(arcList=arcs)
+                tokLat.cachedBestPath = latpath
                 sentence.tokenization.lattice = tokLat
         return communication
 
