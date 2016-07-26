@@ -1,5 +1,5 @@
 FROM centos:7
-ENV thrift_version=0.9.1 concrete_version=master
+ENV thrift_version=0.9.3 concrete_version=master
 MAINTAINER Ted <tedz.cs@gmail.com>
 
 WORKDIR /tmp
