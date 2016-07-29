@@ -30,9 +30,5 @@ RUN git clone https://github.com/hltcoe/concrete.git && \
 
 COPY analytic/keyword_translator.py /opt/scripts/
 COPY docker-entrypoint.sh .
-COPY data /opt/data
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
-
-CMD cd /opt/scripts && \
-    python keyword_translator.py -dictionary /opt/data/lex.en-zh

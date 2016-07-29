@@ -152,12 +152,9 @@ if __name__ == "__main__":
     handler.parseTranslations(options.dictPath)
     processor = Annotator.Processor(handler)
     transport = TSocket.TServerSocket(port=options.port)
-    # tfactory = TTransport.TBufferedTransportFactory()
-    # pfactory = TCompactProtocol.TCompactProtocolFactory()
     ipfactory = TCompactProtocol.TCompactProtocolFactory()
     opfactory = TCompactProtocol.TCompactProtocolFactory()
 
     server = TNonblockingServer.TNonblockingServer(processor, transport, ipfactory, opfactory)
-    # server = TNonblockingServer.TNonblockingServer(processor, transport, tfactory, pfactory)
     logging.info('Starting the server...')
     server.serve()
